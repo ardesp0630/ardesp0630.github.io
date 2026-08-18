@@ -5,9 +5,11 @@ const BLE_CHAR_PWD    = 'd5f10003-6f2a-4b6f-9a2a-8b0e2b7f9c01';
 const BLE_CHAR_KEY    = 'd5f10004-6f2a-4b6f-9a2a-8b0e2b7f9c01';
 const BLE_CHAR_CMD    = 'd5f10005-6f2a-4b6f-9a2a-8b0e2b7f9c01';
 const BLE_CHAR_STATUS = 'd5f10006-6f2a-4b6f-9a2a-8b0e2b7f9c01';
+const BLE_CHAR_SETTINGS = 'd5f10007-6f2a-4b6f-9a2a-8b0e2b7f9c01';
 
 let bleServer = null;
 let bleService = null;
+let bleDevice = null;
 const enc = new TextEncoder();
 
 // ---------- 页面切换 ----------
@@ -66,6 +68,12 @@ async function bleScan() {
       optionalServices: [BLE_SERVICE]
     });
     bleServer = await device.gatt.connect();
+    bleDevice = device;
+    device.addEventListener('gattserverdisconnected', () => {
+      bleService = null; bleServer = null;
+      setConn(false, '已断开');
+      document.getElementById('dev-info').textContent = '设备已断开，请重新扫描';
+    });
     bleService = await bleServer.getPrimaryService(BLE_SERVICE);
     const st = await bleService.getCharacteristic(BLE_CHAR_STATUS);
     const val = await st.readValue();
@@ -107,7 +115,7 @@ async function bleSend() {
     try { await writeChar(chCmd, 'SAVE'); } catch (e) { /* 设备保存后立即重启，响应可能丢失 */ }
     alert('已发送！设备保存配置并重启，观察屏幕是否连上新 WiFi。');
   } catch (e) {
-    alert('发送失败：' + (e.message || e));
+    alert(handleGattError(e));
   } finally {
     btn.disabled = false;
   }
@@ -118,9 +126,58 @@ function hotspotHelp() {
   alert('热点配置步骤：\n1. 设备进入配置模式后，手机连 WiFi「DS-Config」密码 12345678\n2. 浏览器打开 http://192.168.4.1\n3. 填写 WiFi/API Key，点保存并重启');
 }
 
-// ---------- 余额读取（模块4：蓝牙状态特征） ----------
-async function refreshBalance() {
+// ---------- 界面设置（模块B） ----------
+function loadSettings() {
+  const s = JSON.parse(localStorage.getItem('ds_set') || '{}');
+  if (s.rows !== undefined) {
+    document.getElementById('set-used').checked  = !!(s.rows & 1);
+    document.getElementById('set-tok').checked   = !!(s.rows & 2);
+    document.getElementById('set-polls').checked = !!(s.rows & 4);
+    document.getElementById('set-wifi').checked  = !!(s.rows & 8);
+    document.getElementById('set-pw').checked    = !!(s.rows & 16);
+    document.getElementById('set-st').checked    = !!(s.rows & 32);
+  }
+  if (s.bri !== undefined) document.getElementById('set-bri').value = s.bri;
+  if (s.poll !== undefined) document.getElementById('set-poll').value = s.poll;
+  if (s.rot !== undefined) document.getElementById('set-rot').value = s.rot;
+}
+
+async function sendSettings() {
   if (!bleService) { alert('请先点「扫描设备」连接设备'); return; }
+  const g = id => document.getElementById(id);
+  const rows = (g('set-used').checked ? 1 : 0) | (g('set-tok').checked ? 2 : 0)
+             | (g('set-polls').checked ? 4 : 0) | (g('set-wifi').checked ? 8 : 0)
+             | (g('set-pw').checked ? 16 : 0) | (g('set-st').checked ? 32 : 0);
+  const set = { rows, bri: +g('set-bri').value, poll: +g('set-poll').value, rot: +g('set-rot').value };
+  localStorage.setItem('ds_set', JSON.stringify(set));
+  try {
+    const ch = await bleService.getCharacteristic(BLE_CHAR_SETTINGS);
+    await writeChar(ch, JSON.stringify(set));
+    alert('界面设置已发送，设备将应用并重启显示。');
+  } catch (e) {
+    alert(handleGattError(e));
+  }
+}
+
+async function resetSettings() {
+  ['set-used','set-tok','set-polls','set-wifi','set-pw','set-st'].forEach(id => document.getElementById(id).checked = true);
+  document.getElementById('set-bri').value = 255;
+  document.getElementById('set-poll').value = 60;
+  document.getElementById('set-rot').value = 1;
+  await sendSettings();
+}
+
+function handleGattError(e) {
+  const msg = (e && e.message) ? e.message : String(e);
+  if (msg.indexOf('disconnected') >= 0 || msg.indexOf('GATT') >= 0) {
+    bleService = null;
+    setConn(false, '已断开');
+    return '设备已断开，请重新点「扫描设备」连接后再试';
+  }
+  return '发送失败：' + msg;
+}
+async function refreshBalance() {
+  if (!bleService) { return; }   // 未连接时不弹错
   try {
     const ch = await bleService.getCharacteristic(BLE_CHAR_STATUS);
     const val = await ch.readValue();
@@ -132,7 +189,9 @@ async function refreshBalance() {
     el('bal-status').textContent = d.avail === 1 ? 'AVAILABLE' : (d.avail === 0 ? 'LOW FUNDS' : '--');
     el('bal-time').textContent = d.time || '--';
   } catch (e) {
-    alert('读取失败：' + (e.message || e));
+    // 连接已断开时不弹窗，等待自动重连/用户重扫
+    if (e && e.message && e.message.indexOf('disconnected') >= 0) return;
+    document.getElementById('bal-status').textContent = '读取失败';
   }
 }
 
@@ -144,6 +203,9 @@ document.getElementById('btn-scan').addEventListener('click', bleScan);
 document.getElementById('btn-ble-send').addEventListener('click', bleSend);
 document.getElementById('btn-hotspot-send').addEventListener('click', hotspotHelp);
 document.getElementById('btn-refresh').addEventListener('click', refreshBalance);
+document.getElementById('btn-send-set').addEventListener('click', sendSettings);
+document.getElementById('btn-reset-set').addEventListener('click', resetSettings);
+loadSettings();
 
 // ---------- PWA 注册 ----------
 if ('serviceWorker' in navigator) {

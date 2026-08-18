@@ -46,6 +46,33 @@
       <button id="btn-hotspot-send" class="btn btn2">热点配置方法</button>
       <p class="hint">输入的内容会保存在本机浏览器，供模块3 发送。</p>
     </div>
+
+    <div class="card">
+      <div class="card-title">界面设置（自定义显示）</div>
+      <div class="row"><span>显示 消耗</span><input type="checkbox" id="set-used" checked></div>
+      <div class="row"><span>显示 Token</span><input type="checkbox" id="set-tok" checked></div>
+      <div class="row"><span>显示 次数</span><input type="checkbox" id="set-polls" checked></div>
+      <div class="row"><span>显示 WiFi</span><input type="checkbox" id="set-wifi" checked></div>
+      <div class="row"><span>显示 密码</span><input type="checkbox" id="set-pw" checked></div>
+      <div class="row"><span>显示 状态+时间</span><input type="checkbox" id="set-st" checked></div>
+      <label for="set-bri">背光亮度</label>
+      <input type="range" id="set-bri" min="0" max="255" value="255">
+      <label for="set-poll">刷新频率</label>
+      <select id="set-poll">
+        <option value="30">30 秒</option>
+        <option value="60" selected>60 秒</option>
+        <option value="120">120 秒</option>
+      </select>
+      <label for="set-rot">屏幕方向</label>
+      <select id="set-rot">
+        <option value="0">0°（竖屏）</option>
+        <option value="1" selected>90°（横屏）</option>
+        <option value="2">180°</option>
+        <option value="3">270°</option>
+      </select>
+      <button id="btn-send-set" class="btn">发送界面设置（蓝牙）</button>
+      <button id="btn-reset-set" class="btn btn2">恢复默认并发送</button>
+    </div>
   </section>
 
   <!-- 余额页 -->

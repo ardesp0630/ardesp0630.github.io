@@ -1,5 +1,5 @@
 // Service Worker：让 App 可离线打开、可添加到主屏幕
-const CACHE = 'ds-app-v5';
+const CACHE = 'ds-app-v9';
 const ASSETS = ['index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {

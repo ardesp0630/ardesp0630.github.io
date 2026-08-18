@@ -1,0 +1,86 @@
+:root {
+  --bg: #0f1420;
+  --card: #1a2233;
+  --line: #2a3548;
+  --text: #e8edf5;
+  --dim: #7d8aa0;
+  --acc: #3ec6ff;
+  --ok: #34d399;
+  --warn: #fbbf24;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+}
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 17px; font-weight: 600; }
+.badge {
+  font-size: 12px; padding: 3px 10px; border-radius: 99px;
+}
+.badge.on { background: rgba(52,211,153,.15); color: var(--ok); }
+.badge.off { background: rgba(125,138,160,.15); color: var(--dim); }
+
+main { flex: 1; padding: 14px; overflow-y: auto; }
+.tab { display: none; }
+.tab.active { display: block; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.card-title { font-size: 13px; color: var(--dim); margin-bottom: 10px; }
+.big { font-size: 34px; font-weight: 700; letter-spacing: .5px; }
+.sub { font-size: 12px; color: var(--dim); margin-top: 6px; }
+.row {
+  display: flex; justify-content: space-between;
+  font-size: 14px; padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.row:last-child { border-bottom: none; }
+.row span:first-child { color: var(--dim); }
+
+label { display: block; font-size: 13px; color: var(--dim); margin: 10px 0 4px; }
+input {
+  width: 100%; padding: 10px 12px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px;
+  font-size: 15px;
+}
+input:focus { outline: none; border-color: var(--acc); }
+
+.btn {
+  width: 100%; margin-top: 12px; padding: 12px;
+  background: var(--acc); color: #06202e;
+  border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 600;
+}
+.btn2 { background: #2a3548; color: var(--text); }
+.btn:disabled { opacity: .45; }
+.hint { font-size: 12px; color: var(--dim); margin-top: 10px; }
+
+.tabbar {
+  display: flex; border-top: 1px solid var(--line);
+  background: var(--card);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbtn {
+  flex: 1; padding: 12px 0;
+  background: none; border: none; color: var(--dim);
+  font-size: 14px;
+}
+.tabbtn.active { color: var(--acc); font-weight: 600; }

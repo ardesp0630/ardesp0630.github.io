@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1420">
+<title>DeepSeek 显示屏</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>DeepSeek 显示屏</h1>
+  <span id="conn-badge" class="badge off">未连接</span>
+</header>
+
+<main>
+  <!-- 主页 -->
+  <section id="tab-home" class="tab active">
+    <div class="card">
+      <div class="card-title">设备状态</div>
+      <div id="dev-status" class="big">--</div>
+      <div id="dev-info" class="sub">等待连接（模块3 接入蓝牙）</div>
+    </div>
+    <div class="card">
+      <div class="card-title">当前配置</div>
+      <div class="row"><span>WiFi</span><span id="cfg-ssid">--</span></div>
+      <div class="row"><span>API Key</span><span id="cfg-key">--</span></div>
+    </div>
+    <button id="btn-scan" class="btn">扫描设备（蓝牙）</button>
+  </section>
+
+  <!-- 设置页 -->
+  <section id="tab-setup" class="tab">
+    <div class="card">
+      <div class="card-title">配置 WiFi 与 API Key</div>
+      <label for="in-ssid">WiFi 名称</label>
+      <input id="in-ssid" type="text" placeholder="路由器名称（2.4G）">
+      <label for="in-pwd">WiFi 密码</label>
+      <input id="in-pwd" type="password" placeholder="WiFi 密码">
+      <label for="in-key">DeepSeek API Key</label>
+      <input id="in-key" type="password" placeholder="sk-...">
+      <button id="btn-ble-send" class="btn">通过蓝牙发送</button>
+      <button id="btn-hotspot-send" class="btn btn2">热点配置方法</button>
+      <p class="hint">输入的内容会保存在本机浏览器，供模块3 发送。</p>
+    </div>
+  </section>
+
+  <!-- 余额页 -->
+  <section id="tab-balance" class="tab">
+    <div class="card">
+      <div class="card-title">余额</div>
+      <div id="bal-amount" class="big">--</div>
+      <div class="row"><span>状态</span><span id="bal-status">--</span></div>
+      <div class="row"><span>刷新时间</span><span id="bal-time">--</span></div>
+      <button id="btn-refresh" class="btn">刷新余额（蓝牙）</button>
+    </div>
+  </section>
+</main>
+
+<nav class="tabbar">
+  <button class="tabbtn active" data-tab="home">主页</button>
+  <button class="tabbtn" data-tab="setup">设置</button>
+  <button class="tabbtn" data-tab="balance">余额</button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>

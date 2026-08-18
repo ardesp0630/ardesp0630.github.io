@@ -1,0 +1,14 @@
+{
+  "name": "DeepSeek 显示屏",
+  "short_name": "DS屏",
+  "description": "配置 ESP32 DeepSeek 余额显示屏，并查看余额",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f1420",
+  "theme_color": "#0f1420",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -26,8 +26,8 @@
     </div>
 
     <div class="card">
-      <div class="card-title">余额概览</div>
-      <div class="bal-big"><span id="home-bal">--</span><span class="unit">元</span></div>
+      <div class="card-title">余额概览（点数字刷新）</div>
+      <div class="bal-big" id="bal-click"><span id="home-bal">--</span><span class="unit">元</span></div>
       <div class="row"><span>状态</span><span id="home-avail">--</span></div>
       <div class="row"><span>累计消耗</span><span id="home-used">--</span></div>
       <div class="row"><span>累计 Token</span><span id="home-tok">--</span></div>
@@ -64,7 +64,7 @@
       <div class="card-title">界面设置</div>
 
       <div class="preview-wrap">
-        <div class="preview-label">屏幕预览（160×128）</div>
+        <div class="preview-label">屏幕预览（160×128，随设置变化）</div>
         <canvas id="screen-preview" width="320" height="256"></canvas>
       </div>
 
@@ -101,29 +101,31 @@
   <section id="tab-help" class="tab">
     <div class="card">
       <div class="card-title">使用步骤</div>
-      <div class="step"><b>1</b><div>给显示屏通电，等待屏幕显示「连接WiFi...」或余额界面</div></div>
-      <div class="step"><b>2</b><div>手机打开蓝牙，回到「主页」点「连接设备」</div></div>
+      <div class="step"><b>1</b><div>给显示屏通电，等待屏幕出现界面</div></div>
+      <div class="step"><b>2</b><div>手机开启蓝牙，在「主页」点「连接设备」</div></div>
       <div class="step"><b>3</b><div>在列表中选择 <code>DS-Display</code></div></div>
-      <div class="step"><b>4</b><div>到「设置」页填 WiFi 和 API Key，点发送</div></div>
+      <div class="step"><b>4</b><div>到「设置」页填 WiFi 和 API Key，点「通过蓝牙发送」</div></div>
       <div class="step"><b>5</b><div>设备自动重连，屏幕开始显示余额</div></div>
+      <div class="step"><b>6</b><div>想改界面就调下面的开关，点「应用设置」</div></div>
     </div>
 
     <div class="card">
       <div class="card-title">常见问题</div>
+      <div class="faq-q">按钮点了没反应？</div>
+      <div class="faq-a">说明还没连上设备。先回「主页」点「连接设备」，顶部徽标变成绿色「已连接」后再操作。</div>
+
       <div class="faq-q">搜不到 DS-Display？</div>
       <div class="faq-a">① 确认手机蓝牙已开启，并授予本页「附近设备」权限<br>
-      ② 关掉蓝牙再打开，清除系统缓存<br>
+      ② 关掉蓝牙再打开<br>
       ③ 设备重启后需重新扫描，不会自动重连<br>
-      ④ 等待 10 秒，设备开机后需初始化蓝牙</div>
+      ④ 设备开机后需等约 10 秒</div>
 
-      <div class="faq-q">连上了但发不了设置？</div>
-      <div class="faq-a">重新点「连接设备」连接一次。蓝牙距离过远或设备正在重连 WiFi 时可能失败。</div>
+      <div class="faq-q">页面还是旧版？</div>
+      <div class="faq-a">浏览器缓存了旧文件。在 Chrome 里长按刷新按钮选「清空缓存并硬性重新加载」，
+      或到 Chrome 设置 → 网站设置 → 找到本站 → 清除数据。</div>
 
       <div class="faq-q">屏幕显示「错误」？</div>
-      <div class="faq-a">连续 3 次请求失败才会显示。检查 WiFi 是否为 2.4G 频段、API Key 是否正确。</div>
-
-      <div class="faq-q">余额不更新？</div>
-      <div class="faq-a">设备每 60 秒（可在设置中调整）请求一次。折线图每成功一次记录一个点。</div>
+      <div class="faq-a">连续 3 次请求失败才会显示。检查 WiFi 是否 2.4G、API Key 是否正确。</div>
     </div>
 
     <div class="card">

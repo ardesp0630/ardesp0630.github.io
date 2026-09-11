@@ -16,7 +16,7 @@ const enc = new TextEncoder();
 // ---------- 工具 ----------
 function toast(msg, ms) {
   const t = document.getElementById('toast');
-  if (!t) { return; }
+  if (!t) { try { alert(msg) } catch (e) {} return; }
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toast._t);
@@ -25,6 +25,27 @@ function toast(msg, ms) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 const $ = id => document.getElementById(id);
 function setText(id, v) { const e = $(id); if (e) e.textContent = v; }
+
+// 安全绑定：元素不存在时不抛错，避免拖垮后续绑定
+function on(id, ev, fn) {
+  const el = $(id);
+  if (el) el.addEventListener(ev, fn);
+  else console.warn('[DS] 缺少元素 #' + id);
+}
+
+// 未连接时统一拦截
+function requireConn() {
+  if (!bleService) {
+    toast('尚未连接设备 — 请先回「主页」点「连接设备」', 3000);
+    return false;
+  }
+  return true;
+}
+
+// 全局错误捕获：单个功能出错不影响其它按钮
+window.addEventListener('error', e => {
+  console.error('[DS] 未捕获错误:', e.message);
+});
 
 // ---------- 页面切换 ----------
 document.querySelectorAll('.tabbtn').forEach(btn => {
@@ -135,7 +156,7 @@ async function bleSend() {
   const pwd  = inPwd.value;
   const key  = inKey.value.trim();
   if (!ssid || !key) { toast('请先填写 WiFi 名称和 API Key'); return; }
-  if (!bleService) { toast('请先连接设备'); return; }
+  if (!requireConn()) return;
 
   const btn = $('btn-ble-send');
   btn.disabled = true;
@@ -180,7 +201,7 @@ function loadSettings() {
 }
 
 async function sendSettings() {
-  if (!bleService) { toast('请先连接设备'); return; }
+  if (!requireConn()) return;
   const set = readSettings();
   localStorage.setItem('ds_set2', JSON.stringify(set));
   try {
@@ -353,45 +374,46 @@ function roundRect(g, x, y, w, h, r) {
   g.closePath();
 }
 
-// ---------- 按钮绑定 ----------
-$('btn-scan').addEventListener('click', bleScan);
-$('btn-disconnect').addEventListener('click', bleDisconnect);
-$('btn-ble-send').addEventListener('click', bleSend);
-$('btn-hotspot-send').addEventListener('click', () => {
+// ---------- 按钮绑定（全部用安全绑定） ----------
+on('btn-scan', 'click', bleScan);
+on('btn-disconnect', 'click', bleDisconnect);
+on('btn-ble-send', 'click', bleSend);
+on('btn-hotspot-send', 'click', function () {
   toast('热点步骤：连 WiFi「DS-Config」(密码 12345678) → 打开 192.168.4.1', 5000);
 });
-$('btn-send-set').addEventListener('click', sendSettings);
-$('btn-reset-set').addEventListener('click', resetSettings);
+on('btn-send-set', 'click', sendSettings);
+on('btn-reset-set', 'click', resetSettings);
 
-// 余额概览卡片：点标题刷新
-const balCard = $('home-bal');
-if (balCard) {
-  balCard.addEventListener('click', () => { refreshBalance(); toast('已刷新'); });
-  balCard.style.cursor = 'pointer';
-  balCard.title = '点击刷新余额';
-}
+// 余额数字点击刷新
+on('bal-click', 'click', function () {
+  if (!bleService) { toast('尚未连接设备'); return; }
+  refreshBalance();
+  toast('已刷新');
+});
 
 // 设置项变化时实时重绘预览
-SET_KEYS.forEach(k => {
-  const e = $(SET_IDS[k]);
-  if (e) e.addEventListener('change', drawPreview);
+SET_KEYS.forEach(function (k) {
+  on(SET_IDS[k], 'change', drawPreview);
 });
-$('set-rot').addEventListener('change', drawPreview);
+on('set-rot', 'change', drawPreview);
 
-const briSlider = $('set-bri');
-briSlider.addEventListener('input', () => {
-  setText('bri-val', briSlider.value);
+// 背光滑块：显示数值 + 重绘 + 预览亮度联动
+on('set-bri', 'input', function () {
+  const v = $('set-bri').value;
+  setText('bri-val', v);
+  const cv = $('screen-preview');
+  if (cv) cv.style.filter = 'brightness(' + (0.35 + v / 100 * 0.65) + ')';
   drawPreview();
 });
 
-// 预览亮度联动（模拟背光）
-briSlider.addEventListener('input', () => {
-  const cv = $('screen-preview');
-  if (cv) cv.style.filter = 'brightness(' + (0.35 + briSlider.value / 100 * 0.65) + ')';
-});
+// ---------- 初始化（各自独立 try，互不影响） ----------
+try { loadSettings() } catch (e) { console.error('[DS] loadSettings 失败:', e) }
+try { drawPreview() } catch (e) { console.error('[DS] drawPreview 失败:', e) }
 
-loadSettings();
-drawPreview();
+// 启动提示
+setTimeout(function () {
+  if (!bleService) toast('点「连接设备」开始', 2600);
+}, 800);
 
 // ---------- PWA ----------
 if ('serviceWorker' in navigator) {

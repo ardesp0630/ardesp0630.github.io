@@ -78,8 +78,13 @@ async function bleScan() {
     const st = await bleService.getCharacteristic(BLE_CHAR_STATUS);
     const val = await st.readValue();
     const status = new TextDecoder().decode(val);
-    setConn(true, status === 'SAVED' ? '已保存' : '已连接');
-    document.getElementById('dev-info').textContent = device.name || 'DS-Display';
+    const name = device.name || 'DS-Display';
+    setConn(true, name.indexOf('DS-') === 0 ? '已连接' : '已连接');
+    document.getElementById('dev-info').textContent = name;
+
+    // 连上后读取余额与当前设置
+    await refreshBalance();
+    await refreshSettingsFromDevice();
   } catch (e) {
     setConn(false, '连接失败');
     document.getElementById('dev-info').textContent = e.message || String(e);
@@ -112,8 +117,8 @@ async function bleSend() {
     await writeChar(chPwd, pwd);   await sleep(300);
     await writeChar(chKey, key);   await sleep(300);
     saveConfig();
-    try { await writeChar(chCmd, 'SAVE'); } catch (e) { /* 设备保存后立即重启，响应可能丢失 */ }
-    alert('已发送！设备保存配置并重启，观察屏幕是否连上新 WiFi。');
+    try { await writeChar(chCmd, 'SAVE'); } catch (e) { /* 设备热重连时不响应也正常 */ }
+    alert('已发送！设备正在用新配置重连 WiFi。\n\n注意：设备不会重启，蓝牙保持连接；\n屏幕上会短暂显示「连接WiFi...」，\n连上后自动刷新余额。');
   } catch (e) {
     alert(handleGattError(e));
   } finally {
@@ -127,43 +132,85 @@ function hotspotHelp() {
 }
 
 // ---------- 界面设置（模块B） ----------
+// 新版固件字段（与卡片一一对应）：
+//   bri 0-100 | poll 秒 | rot 1|3
+//   showChart / showUsed / showPolls / showToken / showWifi
+const SET_KEYS = ['showChart', 'showUsed', 'showPolls', 'showToken', 'showWifi'];
+const SET_IDS  = { showChart: 'set-chart', showUsed: 'set-used', showPolls: 'set-polls',
+                   showToken: 'set-tok',   showWifi: 'set-wifi' };
+
 function loadSettings() {
-  const s = JSON.parse(localStorage.getItem('ds_set') || '{}');
-  if (s.rows !== undefined) {
-    document.getElementById('set-used').checked  = !!(s.rows & 1);
-    document.getElementById('set-tok').checked   = !!(s.rows & 2);
-    document.getElementById('set-polls').checked = !!(s.rows & 4);
-    document.getElementById('set-wifi').checked  = !!(s.rows & 8);
-    document.getElementById('set-pw').checked    = !!(s.rows & 16);
-    document.getElementById('set-st').checked    = !!(s.rows & 32);
+  const s = JSON.parse(localStorage.getItem('ds_set2') || '{}');
+  SET_KEYS.forEach(k => {
+    const el = document.getElementById(SET_IDS[k]);
+    if (el) el.checked = (s[k] === undefined) ? true : !!s[k];
+  });
+  if (s.bri !== undefined) {
+    const b = Math.max(10, Math.min(100, s.bri));
+    document.getElementById('set-bri').value = b;
+    const bv = document.getElementById('bri-val');
+    if (bv) bv.textContent = b;
   }
-  if (s.bri !== undefined) document.getElementById('set-bri').value = s.bri;
   if (s.poll !== undefined) document.getElementById('set-poll').value = s.poll;
   if (s.rot !== undefined) document.getElementById('set-rot').value = s.rot;
 }
 
+function readSettings() {
+  const g = id => document.getElementById(id);
+  const out = {
+    bri: +g('set-bri').value,
+    poll: +g('set-poll').value,
+    rot: +g('set-rot').value
+  };
+  SET_KEYS.forEach(k => { out[k] = !!g(SET_IDS[k]).checked; });
+  return out;
+}
+
 async function sendSettings() {
   if (!bleService) { alert('请先点「扫描设备」连接设备'); return; }
-  const g = id => document.getElementById(id);
-  const rows = (g('set-used').checked ? 1 : 0) | (g('set-tok').checked ? 2 : 0)
-             | (g('set-polls').checked ? 4 : 0) | (g('set-wifi').checked ? 8 : 0)
-             | (g('set-pw').checked ? 16 : 0) | (g('set-st').checked ? 32 : 0);
-  const set = { rows, bri: +g('set-bri').value, poll: +g('set-poll').value, rot: +g('set-rot').value };
-  localStorage.setItem('ds_set', JSON.stringify(set));
+  const set = readSettings();
+  localStorage.setItem('ds_set2', JSON.stringify(set));
   try {
     const ch = await bleService.getCharacteristic(BLE_CHAR_SETTINGS);
     await writeChar(ch, JSON.stringify(set));
-    alert('界面设置已发送，设备将应用并重启显示。');
+    // 固件会通过 STATUS 回传确认，不重启、蓝牙不断
+    await sleep(600);
+    await refreshSettingsFromDevice();
+    alert('界面设置已应用（设备未重启，蓝牙保持连接）');
   } catch (e) {
     alert(handleGattError(e));
   }
 }
 
+// 从设备读回当前设置，同步到界面
+async function refreshSettingsFromDevice() {
+  if (!bleService) return;
+  try {
+    const ch = await bleService.getCharacteristic(BLE_CHAR_STATUS);
+    const txt = new TextDecoder().decode(await ch.readValue());
+    let d = {};
+    try { d = JSON.parse(txt); } catch (e) { return; }
+    if (d.bri !== undefined) {
+      document.getElementById('set-bri').value = d.bri;
+      const bv = document.getElementById('bri-val');
+      if (bv) bv.textContent = d.bri;
+    }
+    if (d.poll !== undefined) document.getElementById('set-poll').value = d.poll;
+    if (d.rot !== undefined) document.getElementById('set-rot').value = d.rot;
+    SET_KEYS.forEach(k => {
+      const el = document.getElementById(SET_IDS[k]);
+      if (el && d[k] !== undefined) el.checked = !!d[k];
+    });
+  } catch (e) { /* 忽略读取失败 */ }
+}
+
 async function resetSettings() {
-  ['set-used','set-tok','set-polls','set-wifi','set-pw','set-st'].forEach(id => document.getElementById(id).checked = true);
-  document.getElementById('set-bri').value = 255;
+  SET_KEYS.forEach(k => { document.getElementById(SET_IDS[k]).checked = true; });
+  document.getElementById('set-bri').value = 100;
+  const bv = document.getElementById('bri-val');
+  if (bv) bv.textContent = '100';
   document.getElementById('set-poll').value = 60;
-  document.getElementById('set-rot').value = 1;
+  document.getElementById('set-rot').value = 3;
   await sendSettings();
 }
 
@@ -185,9 +232,16 @@ async function refreshBalance() {
     let d = {};
     try { d = JSON.parse(txt); } catch (e) { d = {}; }
     const el = id => document.getElementById(id);
-    el('bal-amount').textContent = (typeof d.bal === 'number') ? d.bal.toFixed(2) : '--';
-    el('bal-status').textContent = d.avail === 1 ? 'AVAILABLE' : (d.avail === 0 ? 'LOW FUNDS' : '--');
-    el('bal-time').textContent = d.time || '--';
+    const set = (id, v) => { const e2 = el(id); if (e2) e2.textContent = v; };
+
+    set('bal-amount', (typeof d.bal === 'number') ? d.bal.toFixed(2) : '--');
+    set('bal-status', d.avail === 1 ? 'AVAILABLE' : (d.avail === 0 ? 'LOW FUNDS' : '--'));
+    set('bal-time', d.time || '--');
+
+    // 新增字段（固件已提供）
+    if (typeof d.used === 'number')  set('bal-used', d.used.toFixed(2));
+    if (typeof d.tok === 'number')   set('bal-tok', String(d.tok));
+    if (typeof d.polls === 'number') set('bal-polls', String(d.polls));
   } catch (e) {
     // 连接已断开时不弹窗，等待自动重连/用户重扫
     if (e && e.message && e.message.indexOf('disconnected') >= 0) return;
@@ -205,6 +259,14 @@ document.getElementById('btn-hotspot-send').addEventListener('click', hotspotHel
 document.getElementById('btn-refresh').addEventListener('click', refreshBalance);
 document.getElementById('btn-send-set').addEventListener('click', sendSettings);
 document.getElementById('btn-reset-set').addEventListener('click', resetSettings);
+
+// 背光滑块实时显示数值
+const briSlider = document.getElementById('set-bri');
+const briLabel  = document.getElementById('bri-val');
+if (briSlider && briLabel) {
+  briSlider.addEventListener('input', () => { briLabel.textContent = briSlider.value; });
+}
+
 loadSettings();
 
 // ---------- PWA 注册 ----------

@@ -22,14 +22,27 @@
     <div class="card">
       <div class="card-title">设备状态</div>
       <div id="dev-status" class="big">--</div>
-      <div id="dev-info" class="sub">等待连接（模块3 接入蓝牙）</div>
+      <div id="dev-info" class="sub">点下方按钮连接设备</div>
     </div>
+
+    <div class="card">
+      <div class="card-title">余额概览</div>
+      <div class="bal-big"><span id="home-bal">--</span><span class="unit">元</span></div>
+      <div class="row"><span>状态</span><span id="home-avail">--</span></div>
+      <div class="row"><span>累计消耗</span><span id="home-used">--</span></div>
+      <div class="row"><span>累计 Token</span><span id="home-tok">--</span></div>
+      <div class="row"><span>查询次数</span><span id="home-polls">--</span></div>
+      <div class="row"><span>更新时间</span><span id="home-time">--</span></div>
+    </div>
+
     <div class="card">
       <div class="card-title">当前配置</div>
       <div class="row"><span>WiFi</span><span id="cfg-ssid">--</span></div>
       <div class="row"><span>API Key</span><span id="cfg-key">--</span></div>
     </div>
-    <button id="btn-scan" class="btn">扫描设备（蓝牙）</button>
+
+    <button id="btn-scan" class="btn">连接设备（蓝牙）</button>
+    <button id="btn-disconnect" class="btn btn2" style="display:none">断开连接</button>
   </section>
 
   <!-- 设置页 -->
@@ -37,56 +50,88 @@
     <div class="card">
       <div class="card-title">配置 WiFi 与 API Key</div>
       <label for="in-ssid">WiFi 名称</label>
-      <input id="in-ssid" type="text" placeholder="路由器名称（2.4G）">
+      <input id="in-ssid" type="text" placeholder="路由器名称（2.4G）" autocomplete="off">
       <label for="in-pwd">WiFi 密码</label>
-      <input id="in-pwd" type="password" placeholder="WiFi 密码">
+      <input id="in-pwd" type="password" placeholder="WiFi 密码" autocomplete="off">
       <label for="in-key">DeepSeek API Key</label>
-      <input id="in-key" type="password" placeholder="sk-...">
+      <input id="in-key" type="password" placeholder="sk-..." autocomplete="off">
       <button id="btn-ble-send" class="btn">通过蓝牙发送</button>
       <button id="btn-hotspot-send" class="btn btn2">热点配置方法</button>
-      <p class="hint">输入的内容会保存在本机浏览器，供模块3 发送。</p>
+      <p class="hint">内容保存在本机浏览器。设备不会重启，蓝牙保持连接。</p>
     </div>
 
     <div class="card">
-      <div class="card-title">界面设置（自定义显示）</div>
-      <div class="row"><span>显示 余额大卡</span><input type="checkbox" id="set-bal" checked disabled></div>
-      <div class="row"><span>显示 折线图</span><input type="checkbox" id="set-chart" checked></div>
-      <div class="row"><span>显示 消耗</span><input type="checkbox" id="set-used" checked></div>
-      <div class="row"><span>显示 次数</span><input type="checkbox" id="set-polls" checked></div>
-      <div class="row"><span>显示 Token</span><input type="checkbox" id="set-tok" checked></div>
-      <div class="row"><span>显示 WiFi</span><input type="checkbox" id="set-wifi" checked></div>
-      <label for="set-bri">背光亮度 <span id="bri-val">100</span>%</label>
+      <div class="card-title">界面设置</div>
+
+      <div class="preview-wrap">
+        <div class="preview-label">屏幕预览（160×128）</div>
+        <canvas id="screen-preview" width="320" height="256"></canvas>
+      </div>
+
+      <div class="toggle-row"><span>折线图</span><label class="sw"><input type="checkbox" id="set-chart" checked><i></i></label></div>
+      <div class="toggle-row"><span>消耗</span><label class="sw"><input type="checkbox" id="set-used" checked><i></i></label></div>
+      <div class="toggle-row"><span>次数</span><label class="sw"><input type="checkbox" id="set-polls" checked><i></i></label></div>
+      <div class="toggle-row"><span>Token</span><label class="sw"><input type="checkbox" id="set-tok" checked><i></i></label></div>
+      <div class="toggle-row"><span>WiFi</span><label class="sw"><input type="checkbox" id="set-wifi" checked><i></i></label></div>
+
+      <label for="set-bri">背光亮度 <b id="bri-val">100</b>%</label>
       <input type="range" id="set-bri" min="10" max="100" value="100">
+
       <label for="set-poll">刷新频率</label>
       <select id="set-poll">
         <option value="30">30 秒</option>
         <option value="60" selected>60 秒</option>
-        <option value="120">120 秒</option>
+        <option value="120">2 分钟</option>
         <option value="300">5 分钟</option>
       </select>
+
       <label for="set-rot">屏幕方向</label>
       <select id="set-rot">
-        <option value="1">90°（横屏）</option>
-        <option value="3" selected>270°（180° 翻转，默认）</option>
+        <option value="1">横屏（90°）</option>
+        <option value="3" selected>横屏翻转（180°，默认）</option>
       </select>
-      <button id="btn-send-set" class="btn">发送界面设置（蓝牙）</button>
-      <button id="btn-reset-set" class="btn btn2">恢复默认并发送</button>
-      <p class="hint">所有设置即时生效，蓝牙不会断开。</p>
+
+      <button id="btn-send-set" class="btn">应用设置（蓝牙）</button>
+      <button id="btn-reset-set" class="btn btn2">恢复默认</button>
+      <p class="hint">设置即时生效，设备不会重启。</p>
     </div>
   </section>
 
-  <!-- 余额页 -->
-  <section id="tab-balance" class="tab">
+  <!-- 帮助页 -->
+  <section id="tab-help" class="tab">
     <div class="card">
-      <div class="card-title">余额</div>
-      <div id="bal-amount" class="big">--</div>
-      <div class="row"><span>状态</span><span id="bal-status">--</span></div>
-      <div class="row"><span>累计消耗</span><span id="bal-used">--</span></div>
-      <div class="row"><span>累计 Token</span><span id="bal-tok">--</span></div>
-      <div class="row"><span>查询次数</span><span id="bal-polls">--</span></div>
-      <div class="row"><span>刷新时间</span><span id="bal-time">--</span></div>
-      <button id="btn-refresh" class="btn">刷新余额（蓝牙）</button>
-      <p class="hint">连接后每 15 秒自动刷新一次。</p>
+      <div class="card-title">使用步骤</div>
+      <div class="step"><b>1</b><div>给显示屏通电，等待屏幕显示「连接WiFi...」或余额界面</div></div>
+      <div class="step"><b>2</b><div>手机打开蓝牙，回到「主页」点「连接设备」</div></div>
+      <div class="step"><b>3</b><div>在列表中选择 <code>DS-Display</code></div></div>
+      <div class="step"><b>4</b><div>到「设置」页填 WiFi 和 API Key，点发送</div></div>
+      <div class="step"><b>5</b><div>设备自动重连，屏幕开始显示余额</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">常见问题</div>
+      <div class="faq-q">搜不到 DS-Display？</div>
+      <div class="faq-a">① 确认手机蓝牙已开启，并授予本页「附近设备」权限<br>
+      ② 关掉蓝牙再打开，清除系统缓存<br>
+      ③ 设备重启后需重新扫描，不会自动重连<br>
+      ④ 等待 10 秒，设备开机后需初始化蓝牙</div>
+
+      <div class="faq-q">连上了但发不了设置？</div>
+      <div class="faq-a">重新点「连接设备」连接一次。蓝牙距离过远或设备正在重连 WiFi 时可能失败。</div>
+
+      <div class="faq-q">屏幕显示「错误」？</div>
+      <div class="faq-a">连续 3 次请求失败才会显示。检查 WiFi 是否为 2.4G 频段、API Key 是否正确。</div>
+
+      <div class="faq-q">余额不更新？</div>
+      <div class="faq-a">设备每 60 秒（可在设置中调整）请求一次。折线图每成功一次记录一个点。</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">热点配置（备用）</div>
+      <p class="hint" style="margin-top:0">设备无有效配置时会自动开热点：</p>
+      <div class="row"><span>热点名称</span><span>DS-Config</span></div>
+      <div class="row"><span>密码</span><span>12345678</span></div>
+      <div class="row"><span>配置地址</span><span>192.168.4.1</span></div>
     </div>
   </section>
 </main>
@@ -94,8 +139,10 @@
 <nav class="tabbar">
   <button class="tabbtn active" data-tab="home">主页</button>
   <button class="tabbtn" data-tab="setup">设置</button>
-  <button class="tabbtn" data-tab="balance">余额</button>
+  <button class="tabbtn" data-tab="help">帮助</button>
 </nav>
+
+<div id="toast" class="toast"></div>
 
 <script src="app.js"></script>
 </body>

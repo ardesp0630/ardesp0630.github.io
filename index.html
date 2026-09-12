@@ -97,6 +97,70 @@
     </div>
   </section>
 
+  <!-- 布局页：手机端直接拖拽调界面 -->
+  <section id="tab-layout" class="tab">
+    <div class="card">
+      <div class="card-title">屏幕预览（可直接拖动元素）</div>
+      <div class="lay-stage">
+        <canvas id="lay-canvas" width="480" height="384"></canvas>
+      </div>
+      <div class="lay-hint" id="lay-hint">点选元素后拖动；拖角或边中点改尺寸</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">元素</div>
+      <div class="lay-tools">
+        <button class="btn btn2" id="lay-add-text">+ 文本</button>
+        <button class="btn btn2" id="lay-add-rect">+ 卡片</button>
+        <button class="btn btn2" id="lay-add-icon">+ 图标</button>
+        <button class="btn btn2" id="lay-add-prog">+ 进度条</button>
+      </div>
+      <div id="lay-list" class="lay-list"></div>
+    </div>
+
+    <div class="card" id="lay-props" style="display:none">
+      <div class="card-title">选中元素 <span id="lay-selname"></span></div>
+      <div class="lay-xyz" id="lay-xyz"></div>
+
+      <div class="lay-nudge">
+        <button data-nudge="-1,0">←</button><button data-nudge="1,0">→</button>
+        <button data-nudge="0,-1">↑</button><button data-nudge="0,1">↓</button>
+      </div>
+      <div class="lay-nudge">
+        <button data-size="-1,0">宽−</button><button data-size="1,0">宽＋</button>
+        <button data-size="0,-1">高−</button><button data-size="0,1">高＋</button>
+      </div>
+
+      <label>数据绑定</label>
+      <select id="lay-bind"></select>
+
+      <label>颜色</label>
+      <div class="lay-colors" id="lay-colors"></div>
+      <input type="color" id="lay-color" class="lay-colorpick">
+
+      <label>字号</label>
+      <div class="lay-tools" id="lay-sizes"></div>
+
+      <label>图标</label>
+      <div class="lay-tools" id="lay-icons"></div>
+
+      <div class="lay-tools" style="margin-top:12px">
+        <button class="btn btn2" id="lay-dup">复制</button>
+        <button class="btn btn2" id="lay-del">删除</button>
+        <button class="btn btn2" id="lay-up">上移层</button>
+        <button class="btn btn2" id="lay-down">下移层</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">应用到设备</div>
+      <button class="btn" id="lay-send">发送到设备（蓝牙）</button>
+      <button class="btn btn2" id="lay-reload">从设备读取当前布局</button>
+      <button class="btn btn2" id="lay-default">恢复默认布局</button>
+      <p class="hint">发送后设备立即重排，不用烧固件。</p>
+    </div>
+  </section>
+
   <!-- 帮助页 -->
   <section id="tab-help" class="tab">
     <div class="card">
@@ -140,6 +204,7 @@
 
 <nav class="tabbar">
   <button class="tabbtn active" data-tab="home">主页</button>
+  <button class="tabbtn" data-tab="layout">布局</button>
   <button class="tabbtn" data-tab="setup">设置</button>
   <button class="tabbtn" data-tab="help">帮助</button>
 </nav>

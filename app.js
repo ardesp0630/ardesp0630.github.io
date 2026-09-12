@@ -240,6 +240,8 @@ async function resetSettings() {
 }
 
 // ---------- 余额 ----------
+let LAST_STATUS = {}   // 最近一次从设备读到的状态，供布局预览使用
+
 async function refreshBalance() {
   if (!bleService) return;
   try {
@@ -247,6 +249,7 @@ async function refreshBalance() {
     const txt = new TextDecoder().decode(await ch.readValue());
     let d = {};
     try { d = JSON.parse(txt); } catch (e) { d = {}; }
+    LAST_STATUS = d;
 
     const bal = (typeof d.bal === 'number') ? d.bal.toFixed(2) : '--';
     const avail = d.avail === 1 ? '可用' : (d.avail === 0 ? '余额不足' : '--');
@@ -405,6 +408,507 @@ on('set-bri', 'input', function () {
   if (cv) cv.style.filter = 'brightness(' + (0.35 + v / 100 * 0.65) + ')';
   drawPreview();
 });
+
+// ============================================================
+//  布局页：手机端直接拖拽调界面
+//  与固件元素模型完全一致（t/x/y/w/h/c/sz/r/bind/icon/on/text）
+// ============================================================
+const LT = { TEXT:0, RECT:1, ROUND:2, CIRCLE:3, TRI:4, LINE:5, ICON:6, BITMAP:7, PROGRESS:8, HBAR:9 }
+const LTNAME = ['文本','矩形','圆角','圆','三角','线','图标','位图','进度','柱状']
+const LD = { NONE:0, BALANCE:1, DELTA:2, USED:3, TOKENS:4, POLLS:5, SSID:6, TIME:7, AVAIL:8, PCT:9,
+             TOKEN_M:10, WIFI_FULL:11, PWD:12, GRANTED:13, TOPUP:14, CURRENCY:15, IP:16, RSSI:17 }
+const LDNAME = ['静态文本','余额','涨跌','消耗','Token原始','次数','WiFi名','时间','可用态','额度%',
+                'Token简写','WiFi整行','WiFi密码','赠送余额','充值余额','币种','本机IP','信号强度']
+const LI = { NONE:0, DOT:1, UP:2, DOWN:3, CHECK:4, CROSS:5, WARN:6, RING:7, WIFI:8, CLOCK:9, BATTERY:10, BOLT:11, STAR:12, WHALE:13 }
+const LICONS = [['圆点',1],['上三角',2],['下三角',3],['对勾',4],['叉号',5],['警告',6],
+                ['圆环',7],['WiFi',8],['时钟',9],['电池',10],['闪电',11],['星形',12],['鲸鱼',13]]
+
+// 主题色（与固件一致）
+const PALS = {
+  报纸: { bg:'#C9C2B0', bar:'#F5F1E6', card:'#F5F1E6', card2:'#9C9482', div:'#B5B2AD', acc:'#8C5A2B', ink:'#1F1B14', ink2:'#4E4638', ok:'#2F6B3A', bad:'#9E2B24' },
+  深海蓝: { bg:'#08131E', bar:'#0E2336', card:'#2A6A96', card2:'#123047', div:'#1C4059', acc:'#2FB6E8', ink:'#EAF6FF', ink2:'#7FA3BC', ok:'#4BD68C', bad:'#FF7A7A' },
+}
+let LAY = { theme:'报纸', sel:null, els:[], nextId:1 }
+const LZ = 3   // 画布放大倍数（160*3=480, 128*3=384）
+
+function lp(k) { return PALS[LAY.theme][k] || '#000' }
+function resolveC(c) { if (!c) return lp('ink'); if (c.charAt(0) === '#') return c; return lp(c) }
+
+// 默认布局（与固件 buildDefaultLayout 一致）
+function defaultLayout() {
+  let id = 1
+  const E = (o) => { const e = Object.assign({ id:id++, on:true, sz:1, bind:0, icon:0, text:'', r:0 }, o); LAY.els.push(e); return e }
+  LAY.els = []
+
+  E({ t:LT.RECT,  x:0,  y:0,   w:160, h:15, c:'bar' })
+  E({ t:LT.TEXT,  x:5,  y:3,   w:56,  h:10, c:'acc',  text:'DeepSeek' })
+  E({ t:LT.ICON,  x:118,y:4,   w:7,   h:7,  c:'ok',   icon:LI.DOT })
+  E({ t:LT.TEXT,  x:128,y:3,   w:32,  h:10, c:'ink2', bind:LD.TIME })
+  E({ t:LT.ROUND, x:2,  y:16,  w:156, h:32, c:'card', r:5 })
+  E({ t:LT.TEXT,  x:24, y:19,  w:112, h:26, c:'ink',  sz:3, bind:LD.BALANCE })
+  E({ t:LT.PROGRESS, x:10, y:44, w:140, h:4, c:'acc' })
+  E({ t:LT.HBAR,  x:2,  y:52,  w:156, h:30, c:'acc' })
+  E({ t:LT.ROUND, x:2,  y:86,  w:77,  h:15, c:'card2', r:3 })
+  E({ t:LT.TEXT,  x:6,  y:87,  w:22,  h:13, c:'ink',  text:'消耗' })
+  E({ t:LT.TEXT,  x:30, y:87,  w:44,  h:13, c:'ink',  bind:LD.USED })
+  E({ t:LT.ROUND, x:81, y:86,  w:77,  h:15, c:'card2', r:3 })
+  E({ t:LT.TEXT,  x:85, y:87,  w:22,  h:13, c:'ink',  text:'次数' })
+  E({ t:LT.TEXT,  x:109,y:87,  w:44,  h:13, c:'ink',  bind:LD.POLLS })
+  E({ t:LT.TEXT,  x:4,  y:104, w:34,  h:10, c:'ink2', text:'Token' })
+  E({ t:LT.TEXT,  x:40, y:104, w:110, h:10, c:'ink2', bind:LD.TOKEN_M })
+  E({ t:LT.TEXT,  x:4,  y:114, w:22,  h:10, c:'ink2', text:'WiFi' })
+  E({ t:LT.TEXT,  x:28, y:114, w:80,  h:10, c:'ink2', bind:LD.SSID })
+  E({ t:LT.TEXT,  x:112,y:114, w:46,  h:10, c:'ink2', bind:LD.RSSI })
+  E({ t:LT.TEXT,  x:4,  y:124, w:22,  h:10, c:'bad',  text:'密码' })
+  E({ t:LT.TEXT,  x:28, y:124, w:100, h:10, c:'bad',  bind:LD.PWD })
+  LAY.nextId = id
+}
+
+function demoVal(bind) {
+  const s = LAST_STATUS || {}
+  switch (bind) {
+    case LD.BALANCE: return (typeof s.bal === 'number') ? s.bal.toFixed(2) : '96.50'
+    case LD.DELTA: return '-0.02'
+    case LD.USED: return (typeof s.used === 'number') ? s.used.toFixed(2) : '12.34'
+    case LD.TOKENS: return String(s.tok || 518211416)
+    case LD.POLLS: return String(s.polls || 1527)
+    case LD.SSID: return (cfgSsid() || '1213')
+    case LD.TIME: return s.time || '12:34:56'
+    case LD.AVAIL: return (s.avail === 0) ? '不足' : '可用'
+    case LD.PCT: return (s.pct || 12) + '%'
+    case LD.TOKEN_M: return fmtTok(s.tok || 518211416)
+    case LD.WIFI_FULL: return 'WiFi ' + (cfgSsid() || '1213')
+    case LD.PWD: return '6666666666'
+    case LD.GRANTED: return '10.00'
+    case LD.TOPUP: return '86.50'
+    case LD.CURRENCY: return 'CNY'
+    case LD.IP: return '192.168.1.23'
+    case LD.RSSI: return '-58 dBm'
+    default: return ''
+  }
+}
+function cfgSsid() { try { return (JSON.parse(localStorage.getItem('ds_cfg') || '{}').ssid) || '' } catch (e) { return '' } }
+function fmtTok(t) {
+  if (t >= 100000000) return Math.floor(t / 100000000) + '亿' + String(Math.floor((t % 100000000) / 10000)).padStart(4, '0')
+  if (t >= 10000) return (t / 10000).toFixed(2) + '万'
+  return String(t)
+}
+
+// ---------- 绘制 ----------
+function layRect(g, x, y, w, h, c) { if (w > 0 && h > 0) { g.fillStyle = c; g.fillRect(x, y, w, h) } }
+function layRound(g, x, y, w, h, r, c) {
+  if (w <= 0 || h <= 0) return
+  r = Math.min(r || 0, w / 2, h / 2)
+  g.fillStyle = c; g.beginPath(); g.moveTo(x + r, y)
+  g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r)
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); g.fill()
+}
+function layCircle(g, cx, cy, r, c) { g.fillStyle = c; g.beginPath(); g.arc(cx, cy, Math.max(0, r), 0, 7); g.fill() }
+function layIcon(g, icon, x, y, w, h, c, bg) {
+  const cx = x + w / 2, cy = y + h / 2, r = Math.max(1, Math.floor(Math.min(w, h) / 2))
+  const p = {
+    rect: (a,b,cc,d,col)=>{g.fillStyle=col;g.fillRect(a,b,cc,d)},
+    circ: (a,b,rr,col)=>layCircle(g,a,b,rr,col),
+    tri: (a,b,cc,d,e,f,col)=>{g.fillStyle=col;g.beginPath();g.moveTo(a,b);g.lineTo(cc,d);g.lineTo(e,f);g.closePath();g.fill()},
+    ln: (a,b,cc,d,col)=>{g.strokeStyle=col;g.lineWidth=1;g.beginPath();g.moveTo(a,b);g.lineTo(cc,d);g.stroke()}
+  }
+  if (icon === LI.DOT) p.circ(cx, cy, r, c)
+  else if (icon === LI.UP) p.tri(cx, y, x+w-1, y+h-1, x, y+h-1, c)
+  else if (icon === LI.DOWN) p.tri(cx, y+h-1, x, y, x+w-1, y, c)
+  else if (icon === LI.CHECK) { p.ln(x,cy,x+w/3,y+h-1,c); p.ln(x+w/3,y+h-1,x+w-1,y,c) }
+  else if (icon === LI.CROSS) { p.ln(x,y,x+w,y+h,c); p.ln(x+w,y,x,y+h,c) }
+  else if (icon === LI.WARN) { p.tri(cx,y,x+w-1,y+h-1,x,y+h-1,c) }
+  else if (icon === LI.RING) { g.strokeStyle=c; g.beginPath(); g.arc(cx,cy,r-1,0,7); g.stroke() }
+  else if (icon === LI.WIFI) {
+    p.circ(x + w/6, y + h - 2, 1, c)
+    for (let ring = 1; ring <= 3; ring++) {
+      const rr = ring * (w * 2 / 3) / 3
+      for (let a = -52; a <= 52; a += 6) {
+        const rad = (a - 90) * Math.PI / 180
+        p.rect(Math.round(x+w/6 + rr*Math.cos(rad)), Math.round(y+h-2 + rr*Math.sin(rad)), 1, 2, c)
+      }
+    }
+  }
+  else if (icon === LI.CLOCK) { g.strokeStyle=c; g.beginPath(); g.arc(cx,cy,r-1,0,7); g.stroke(); p.ln(cx,cy,cx,cy-r+3,c); p.ln(cx,cy,cx+r/2,cy,c) }
+  else if (icon === LI.BATTERY) { p.ln(x,y+1,x+w-4,y+1,c); p.ln(x,y+h-2,x+w-4,y+h-2,c); p.rect(x+3,y+4,Math.floor((w-8)*2/3),h-6,c) }
+  else if (icon === LI.BOLT) { p.tri(Math.floor(cx+w/6),y,x+w-1,Math.floor(y+h*0.42),Math.floor(x+w/4),Math.floor(y+h*0.42),c); p.tri(Math.floor(cx-w/6),Math.floor(y+h*0.58),Math.floor(x+w*0.75),Math.floor(y+h*0.58),x,y+h-1,c) }
+  else if (icon === LI.STAR) { for (let i=0;i<5;i++){ const a1=(-90+i*144)*Math.PI/180, a2=(-90+(i+2)*144)*Math.PI/180; p.ln(cx+r*Math.cos(a1),cy+r*Math.sin(a1),cx+r*Math.cos(a2),cy+r*Math.sin(a2),c) } }
+  else if (icon === LI.WHALE) {
+    const s = Math.max(1, Math.floor(r/4))
+    p.rect(x+Math.floor(w/4), cy-s, Math.floor(w/2)+2, s*2, c)
+    p.circ(x+Math.floor(w/4), cy, s*2, c); p.circ(cx+Math.floor(w/6), cy, s*2, c)
+    p.tri(cx+Math.floor(w/5), cy, x+w-1, cy-s*2, x+w-1, cy+Math.floor(s/2), c)
+    p.tri(cx-Math.floor(w/12), cy-s, cx, y+1, cx+Math.floor(w/12), cy-s, c)
+  }
+}
+
+function drawLayout() {
+  const cv = $('lay-canvas'); if (!cv) return
+  const g = cv.getContext('2d')
+  g.setTransform(1, 0, 0, 1, 0, 0)
+  g.clearRect(0, 0, cv.width, cv.height)
+  g.setTransform(LZ, 0, 0, LZ, 0, 0)
+  g.fillStyle = lp('bg'); g.fillRect(0, 0, 160, 128)
+
+  LAY.els.forEach(function (e) {
+    if (!e.on) return
+    const c = resolveC(e.c)
+    if (e.t === LT.RECT) layRect(g, e.x, e.y, e.w, e.h, c)
+    else if (e.t === LT.ROUND) layRound(g, e.x, e.y, e.w, e.h, e.r || 6, c)
+    else if (e.t === LT.CIRCLE) layCircle(g, e.x + e.w/2, e.y + e.h/2, Math.min(e.w, e.h)/2, c)
+    else if (e.t === LT.TRI) { g.fillStyle = c; g.beginPath(); g.moveTo(e.x+e.w/2,e.y); g.lineTo(e.x+e.w,e.y+e.h); g.lineTo(e.x,e.y+e.h); g.closePath(); g.fill() }
+    else if (e.t === LT.LINE) layRect(g, e.x, e.y, e.w, Math.max(1, e.h), c)
+    else if (e.t === LT.ICON) layIcon(g, e.icon, e.x, e.y, e.w || 10, e.h || 10, c, lp('bg'))
+    else if (e.t === LT.PROGRESS) {
+      layRect(g, e.x, e.y, e.w, e.h, lp('card2'))
+      const pct = (LAST_STATUS && LAST_STATUS.pct) || 12
+      const fw = Math.round(e.w * pct / 100)
+      if (fw > 0) layRect(g, e.x, e.y, fw, e.h, c)
+      layCircle(g, Math.max(e.x+3, Math.min(e.x+e.w-3, e.x+fw)), e.y + e.h/2, 2, c)
+    }
+    else if (e.t === LT.HBAR) {
+      const n = 12, bw = Math.max(1, Math.floor(e.w/n) - 1)
+      for (let i = 0; i < n; i++) {
+        const bh = Math.round((0.3 + 0.7 * Math.abs(Math.sin(i * 0.8))) * (e.h - 2)) + 2
+        layRect(g, e.x + i*(bw+1), e.y + e.h - bh, bw, bh, c)
+      }
+    }
+    else if (e.t === LT.TEXT) {
+      const s = (e.bind ? demoVal(e.bind) : e.text) || ''
+      if (!s) return
+      const sc = e.sz || 1
+      g.fillStyle = c; g.textAlign = 'center'; g.textBaseline = 'top'
+      let cx = e.x
+      for (const ch of s) {
+        if (ch.charCodeAt(0) < 128) { g.font = 'bold ' + Math.round(7*sc) + 'px monospace'; g.fillText(ch, cx+3*sc, e.y); cx += 6*sc }
+        else { g.font = Math.round(12*sc) + 'px sans-serif'; g.fillText(ch, cx+6*sc, e.y); cx += 12*sc }
+      }
+    }
+  })
+
+  // 选中框 + 大号手柄（手指友好）
+  const s = LAY.els.find(function (e) { return e.id === LAY.sel })
+  if (s) {
+    g.strokeStyle = '#0A84FF'; g.lineWidth = 1
+    g.strokeRect(s.x - .5, s.y - .5, s.w + 1, s.h + 1)
+    const hs = [[s.x,s.y],[s.x+s.w,s.y],[s.x,s.y+s.h],[s.x+s.w,s.y+s.h],[s.x+s.w,s.y+s.h/2],[s.x+s.w/2,s.y+s.h]]
+    g.fillStyle = '#0A84FF'
+    hs.forEach(function (q) { g.fillRect(q[0]-3, q[1]-3, 6, 6) })
+  }
+}
+
+// ---------- 触摸/鼠标拖拽 ----------
+const LAY_HANDLE = 8   // 手柄命中半径（屏像素，除以 LZ 后为逻辑像素）
+
+function layPoint(ev) {
+  const cv = $('lay-canvas'); if (!cv) return null
+  const r = cv.getBoundingClientRect()
+  const t = (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]) || ev
+  return { x: (t.clientX - r.left) / r.width * 160, y: (t.clientY - r.top) / r.height * 128 }
+}
+
+let layDrag = null
+
+function layDown(ev) {
+  const p = layPoint(ev); if (!p) return
+  const near = function (a, b) { return Math.abs(a - b) <= LAY_HANDLE / LZ }
+  const s = LAY.els.find(function (e) { return e.id === LAY.sel })
+
+  // 先判手柄
+  if (s) {
+    if (near(p.x, s.x) && near(p.y, s.y)) { layDrag = { mode:'rz', id:s.id, h:'tl', sx:p.x, sy:p.y, o:{...s} }; ev.preventDefault(); return }
+    if (near(p.x, s.x+s.w) && near(p.y, s.y+s.h)) { layDrag = { mode:'rz', id:s.id, h:'br', sx:p.x, sy:p.y, o:{...s} }; ev.preventDefault(); return }
+    if (near(p.x, s.x+s.w) && Math.abs(p.y - (s.y+s.h/2)) <= LAY_HANDLE/LZ) { layDrag = { mode:'rz', id:s.id, h:'r', sx:p.x, sy:p.y, o:{...s} }; ev.preventDefault(); return }
+    if (near(p.y, s.y+s.h) && Math.abs(p.x - (s.x+s.w/2)) <= LAY_HANDLE/LZ) { layDrag = { mode:'rz', id:s.id, h:'b', sx:p.x, sy:p.y, o:{...s} }; ev.preventDefault(); return }
+  }
+  // 再判元素（从上往下）
+  for (let i = LAY.els.length - 1; i >= 0; i--) {
+    const e = LAY.els[i]
+    if (!e.on) continue
+    const hw = Math.max(e.w, 14), hh = Math.max(e.h, 10)
+    if (p.x >= e.x && p.x <= e.x + hw && p.y >= e.y && p.y <= e.y + hh) {
+      LAY.sel = e.id
+      layDrag = { mode:'move', id:e.id, sx:p.x, sy:p.y, o:{...e} }
+      layRenderAll()
+      ev.preventDefault()
+      return
+    }
+  }
+  LAY.sel = null
+  layRenderAll()
+}
+
+function layMove(ev) {
+  if (!layDrag) return
+  const p = layPoint(ev); if (!p) return
+  const d = layDrag, o = d.o
+  const dx = p.x - d.sx, dy = p.y - d.sy
+  const S = function (v) { return Math.round(v) }   // 1px 精度（8px 吸附会太跳）
+  const e = LAY.els.find(function (q) { return q.id === d.id })
+  if (!e) return
+  if (d.mode === 'move') {
+    e.x = Math.max(0, Math.min(160 - e.w, S(o.x + dx)))
+    e.y = Math.max(0, Math.min(128 - e.h, S(o.y + dy)))
+  } else {
+    if (d.h === 'br' || d.h === 'r') e.w = Math.max(4, S(o.w + dx))
+    if (d.h === 'br' || d.h === 'b') e.h = Math.max(4, S(o.h + dy))
+    if (d.h === 'tl') {
+      const nw = Math.max(4, S(o.w - dx)), nh = Math.max(4, S(o.h - dy))
+      e.x = S(o.x + (o.w - nw)); e.y = S(o.y + (o.h - nh)); e.w = nw; e.h = nh
+    }
+    if (e.x + e.w > 160) e.w = 160 - e.x
+    if (e.y + e.h > 128) e.h = 128 - e.y
+  }
+  drawLayout()
+  layUpdateProps()
+  ev.preventDefault()
+}
+
+function layUp() { if (layDrag) { layDrag = null; layRenderList() } }
+
+// ---------- 元素列表 / 属性面板 ----------
+function layRenderList() {
+  const box = $('lay-list'); if (!box) return
+  box.innerHTML = ''
+  LAY.els.slice().reverse().forEach(function (e) {
+    const row = document.createElement('div')
+    row.className = 'lay-row' + (e.id === LAY.sel ? ' sel' : '')
+    row.innerHTML = '<span class="lay-t">' + LTNAME[e.t] + '</span>' +
+      '<span class="lay-xy">' + e.x + ',' + e.y + ' ' + e.w + '×' + e.h +
+      (e.bind ? ' → ' + LDNAME[e.bind] : (e.text ? ' “' + e.text + '”' : '')) + '</span>'
+
+    // 显隐开关（不用 innerHTML 拼 input，直接建节点以便绑定事件）
+    const sw = document.createElement('label')
+    sw.className = 'lay-swbtn'
+    const inp = document.createElement('input')
+    inp.type = 'checkbox'
+    inp.checked = !!e.on
+    inp.addEventListener('change', function () { e.on = this.checked; layRenderAll() })
+    const ic = document.createElement('i')
+    sw.appendChild(inp)
+    sw.appendChild(ic)
+    row.appendChild(sw)
+
+    row.addEventListener('click', function (ev) {
+      if (ev.target === inp) return
+      LAY.sel = e.id; layRenderAll()
+    })
+    box.appendChild(row)
+  })
+}
+
+function layUpdateProps() {
+  const s = LAY.els.find(function (e) { return e.id === LAY.sel })
+  const box = $('lay-props')
+  if (!box) return
+  if (!s) { box.style.display = 'none'; return }
+  box.style.display = 'block'
+  setText('lay-selname', LTNAME[s.t] + ' #' + s.id)
+  setText('lay-xyz', 'x ' + s.x + '  y ' + s.y + '  宽 ' + s.w + '  高 ' + s.h)
+  const bindSel = $('lay-bind')
+  if (bindSel) bindSel.value = String(s.bind || 0)
+  const cp = $('lay-color')
+  if (cp) cp.value = resolveC(s.c)
+  // 字号（仅文本）
+  const szBox = $('lay-sizes')
+  if (szBox) {
+    szBox.style.display = (s.t === LT.TEXT) ? 'flex' : 'none'
+    szBox.innerHTML = ''
+    if (s.t === LT.TEXT) {
+      [1,2,3,4].forEach(function (n) {
+        const b = document.createElement('button')
+        b.className = (s.sz || 1) === n ? 'on' : ''
+        b.textContent = '字号' + n
+        b.addEventListener('click', function () { s.sz = n; layRenderAll() })
+        szBox.appendChild(b)
+      })
+    }
+  }
+  // 图标
+  const icBox = $('lay-icons')
+  if (icBox) {
+    icBox.style.display = (s.t === LT.ICON) ? 'flex' : 'none'
+    icBox.innerHTML = ''
+    if (s.t === LT.ICON) {
+      LICONS.forEach(function (p) {
+        const b = document.createElement('button')
+        b.className = (s.icon === p[1]) ? 'on' : ''
+        b.textContent = p[0]
+        b.addEventListener('click', function () { s.icon = p[1]; layRenderAll() })
+        icBox.appendChild(b)
+      })
+    }
+  }
+}
+
+function layRenderAll() { drawLayout(); layRenderList(); layUpdateProps() }
+
+// ---------- 发送到设备 ----------
+function layExport() {
+  const els = LAY.els.map(function (e) {
+    const o = { t:e.t, x:e.x, y:e.y, w:e.w, h:e.h, c:(e.c || 'ink') }
+    if (e.sz > 1) o.sz = e.sz
+    if (e.r) o.r = e.r
+    if (e.bind) o.bind = e.bind
+    if (e.t === LT.ICON) o.icon = e.icon
+    if (!e.on) o.on = 0
+    if (e.text) o.text = e.text
+    return o
+  })
+  return JSON.stringify({ layout: els })
+}
+
+async function laySend() {
+  if (!requireConn()) return
+  const payload = layExport()
+  try {
+    const ch = await bleService.getCharacteristic(BLE_CHAR_SETTINGS)
+    // 固件接受 {"layout":[...]} 或 {"elems":[...]}
+    const send = payload.replace('"layout"', '"elems"')
+    await writeChar(ch, send)
+    await sleep(500)
+    toast('已发送 ' + LAY.els.length + ' 个元素，设备正在重排')
+  } catch (e) {
+    toast(handleGattError(e), 3500)
+  }
+}
+
+async function layReload() {
+  if (!requireConn()) return
+  try {
+    const ch = await bleService.getCharacteristic(BLE_CHAR_CMD)
+    await writeChar(ch, 'LAYOUT')
+    await sleep(600)
+    const st = await bleService.getCharacteristic(BLE_CHAR_STATUS)
+    const txt = new TextDecoder().decode(await st.readValue())
+    let d = {}
+    try { d = JSON.parse(txt) } catch (e) {}
+    if (d.elems && d.elems.length) {
+      LAY.els = d.elems.map(function (e, i) {
+        return { id:i+1, t:e.t, x:e.x, y:e.y, w:e.w, h:e.h,
+                 c:e.c, sz:e.sz||1, r:e.r||0, bind:e.bind||0, icon:e.icon||0,
+                 on:e.on !== 0, text:e.text||'' }
+      })
+      LAY.nextId = LAY.els.length + 1
+      LAY.sel = null
+      layRenderAll()
+      toast('已读取 ' + LAY.els.length + ' 个元素')
+    } else {
+      toast('设备未返回布局（旧固件？）', 3000)
+    }
+  } catch (e) {
+    toast('读取失败：' + (e.message || e), 3500)
+  }
+}
+
+// ---------- 绑定事件 ----------
+function layInit() {
+  defaultLayout()
+
+  const cv = $('lay-canvas')
+  if (cv) {
+    cv.addEventListener('mousedown', layDown)
+    cv.addEventListener('touchstart', layDown, { passive: false })
+    window.addEventListener('mousemove', layMove)
+    window.addEventListener('touchmove', layMove, { passive: false })
+    window.addEventListener('mouseup', layUp)
+    window.addEventListener('touchend', layUp)
+  }
+
+  const bindSel = $('lay-bind')
+  if (bindSel) {
+    LDNAME.forEach(function (n, i) {
+      const o = document.createElement('option')
+      o.value = i; o.textContent = n
+      bindSel.appendChild(o)
+    })
+    bindSel.addEventListener('change', function () {
+      const s = LAY.els.find(function (e) { return e.id === LAY.sel })
+      if (s) { s.bind = +this.value; layRenderAll() }
+    })
+  }
+
+  const colBox = $('lay-colors')
+  if (colBox) {
+    ['ink','ink2','acc','ok','bad','card','card2','bar','bg'].forEach(function (k) {
+      const b = document.createElement('button')
+      b.className = 'lay-swatch'
+      b.style.background = lp(k)
+      b.title = k
+      b.addEventListener('click', function () {
+        const s = LAY.els.find(function (e) { return e.id === LAY.sel })
+        if (s) { s.c = k; layRenderAll() }
+      })
+      colBox.appendChild(b)
+    })
+  }
+
+  const cp = $('lay-color')
+  if (cp) cp.addEventListener('input', function () {
+    const s = LAY.els.find(function (e) { return e.id === LAY.sel })
+    if (s) { s.c = this.value.toUpperCase(); layRenderAll() }
+  })
+
+  document.querySelectorAll('[data-nudge]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      const s = LAY.els.find(function (e) { return e.id === LAY.sel }); if (!s) return
+      const a = this.dataset.nudge.split(',').map(Number)
+      s.x = Math.max(0, Math.min(160 - s.w, s.x + a[0]))
+      s.y = Math.max(0, Math.min(128 - s.h, s.y + a[1]))
+      layRenderAll()
+    })
+  })
+  document.querySelectorAll('[data-size]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      const s = LAY.els.find(function (e) { return e.id === LAY.sel }); if (!s) return
+      const a = this.dataset.size.split(',').map(Number)
+      s.w = Math.max(4, s.w + a[0]); s.h = Math.max(4, s.h + a[1])
+      layRenderAll()
+    })
+  })
+
+  function addEl(t) {
+    const e = { id:LAY.nextId++, t:t, x:16, y:16, w:60, h:16, c:'ink',
+                sz:1, r:(t === LT.ROUND ? 6 : 0), bind:0, icon:LI.DOT,
+                on:true, text:(t === LT.TEXT ? '文字' : '') }
+    if (t === LT.ICON) { e.w = 14; e.h = 14; e.c = 'acc' }
+    if (t === LT.PROGRESS) { e.w = 120; e.h = 5; e.c = 'acc' }
+    if (t === LT.HBAR) { e.w = 140; e.h = 28; e.c = 'acc' }
+    LAY.els.push(e); LAY.sel = e.id; layRenderAll()
+  }
+  on('lay-add-text', 'click', function () { addEl(LT.TEXT) })
+  on('lay-add-rect', 'click', function () { addEl(LT.ROUND) })
+  on('lay-add-icon', 'click', function () { addEl(LT.ICON) })
+  on('lay-add-prog', 'click', function () { addEl(LT.PROGRESS) })
+
+  on('lay-dup', 'click', function () {
+    const s = LAY.els.find(function (e) { return e.id === LAY.sel }); if (!s) return
+    const n = Object.assign({}, s, { id:LAY.nextId++, x:s.x+4, y:s.y+4 })
+    LAY.els.push(n); LAY.sel = n.id; layRenderAll()
+  })
+  on('lay-del', 'click', function () {
+    LAY.els = LAY.els.filter(function (e) { return e.id !== LAY.sel })
+    LAY.sel = null; layRenderAll()
+  })
+  on('lay-up', 'click', function () {
+    const i = LAY.els.findIndex(function (e) { return e.id === LAY.sel })
+    if (i < 0 || i >= LAY.els.length - 1) return
+    const t = LAY.els[i]; LAY.els[i] = LAY.els[i+1]; LAY.els[i+1] = t; layRenderAll()
+  })
+  on('lay-down', 'click', function () {
+    const i = LAY.els.findIndex(function (e) { return e.id === LAY.sel })
+    if (i <= 0) return
+    const t = LAY.els[i]; LAY.els[i] = LAY.els[i-1]; LAY.els[i-1] = t; layRenderAll()
+  })
+
+  on('lay-send', 'click', laySend)
+  on('lay-reload', 'click', layReload)
+  on('lay-default', 'click', function () { defaultLayout(); LAY.sel = null; layRenderAll(); toast('已恢复默认布局') })
+
+  layRenderAll()
+}
+
+try { layInit() } catch (e) { console.error('[DS] 布局页初始化失败:', e) }
 
 // ---------- 初始化（各自独立 try，互不影响） ----------
 try { loadSettings() } catch (e) { console.error('[DS] loadSettings 失败:', e) }

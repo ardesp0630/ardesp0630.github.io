@@ -180,38 +180,35 @@ async function bleSend() {
   }
 }
 
-// ---------- 界面设置 ----------
-const SET_KEYS = ['showChart', 'showUsed', 'showPolls', 'showToken', 'showWifi'];
-const SET_IDS  = { showChart: 'set-chart', showUsed: 'set-used', showPolls: 'set-polls',
-                   showToken: 'set-tok',   showWifi: 'set-wifi' };
-
+// ============================================================
+//  设备设置（只管设备级参数，界面内容由「布局」页负责）
+// ============================================================
 function readSettings() {
-  const out = { bri: +$('set-bri').value, poll: +$('set-poll').value, rot: +$('set-rot').value };
-  SET_KEYS.forEach(k => { out[k] = !!$(SET_IDS[k]).checked; });
-  return out;
+  return { bri: +$('set-bri').value, poll: +$('set-poll').value, rot: +$('set-rot').value };
 }
 
 function loadSettings() {
   const s = JSON.parse(localStorage.getItem('ds_set2') || '{}');
-  SET_KEYS.forEach(k => { const e = $(SET_IDS[k]); if (e) e.checked = (s[k] === undefined) ? true : !!s[k]; });
   if (s.bri !== undefined) { const b = Math.max(10, Math.min(100, s.bri)); $('set-bri').value = b; setText('bri-val', b); }
   if (s.poll !== undefined) $('set-poll').value = s.poll;
   if (s.rot !== undefined) $('set-rot').value = s.rot;
-  drawPreview();
 }
 
 async function sendSettings() {
   if (!requireConn()) return;
   const set = readSettings();
   localStorage.setItem('ds_set2', JSON.stringify(set));
+  const btn = $('btn-send-set');
+  if (btn) btn.disabled = true;
   try {
     const ch = await bleService.getCharacteristic(BLE_CHAR_SETTINGS);
     await writeChar(ch, JSON.stringify(set));
     await sleep(500);
-    await refreshSettingsFromDevice();
-    toast('设置已应用（设备未重启）');
+    toast('✓ 设备设置已应用');
   } catch (e) {
     toast(handleGattError(e), 3500);
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -225,17 +222,13 @@ async function refreshSettingsFromDevice() {
     if (d.bri !== undefined)  { $('set-bri').value = d.bri; setText('bri-val', d.bri); }
     if (d.poll !== undefined) $('set-poll').value = d.poll;
     if (d.rot !== undefined)  $('set-rot').value = d.rot;
-    SET_KEYS.forEach(k => { const e = $(SET_IDS[k]); if (e && d[k] !== undefined) e.checked = !!d[k]; });
-    drawPreview();
   } catch (e) {}
 }
 
 async function resetSettings() {
-  SET_KEYS.forEach(k => { $(SET_IDS[k]).checked = true; });
   $('set-bri').value = 100; setText('bri-val', '100');
   $('set-poll').value = 60;
   $('set-rot').value = 3;
-  drawPreview();
   await sendSettings();
 }
 
@@ -274,98 +267,9 @@ async function refreshBalance() {
 setInterval(() => { if (bleService) refreshBalance(); }, 15000);
 
 // ============================================================
-//  屏幕预览：按固件同样的布局与配色在 canvas 上绘制
-//  （160x128，2 倍放大）
+//  旧的设置页预览已移除 —— 界面预览统一在「布局」页
+//  （布局页的预览基于真实元素模型，比这里的硬编码绘制更准确）
 // ============================================================
-const PAL = {
-  bg: '#C9C2B0', bar: '#F5F1E6', card: '#F5F1E6', card2: '#9C9482',
-  div: '#B5B2AD', acc: '#8C5A2B', ink: '#1F1B14', ink2: '#4E4638'
-};
-
-function drawPreview() {
-  const cv = $('screen-preview');
-  if (!cv) return;
-  const g = cv.getContext('2d');
-  const Z = 2;
-  g.setTransform(Z, 0, 0, Z, 0, 0);
-  g.imageSmoothingEnabled = false;
-  const W = 160, H = 128;
-  g.clearRect(0, 0, W, H);
-
-  const rot = +$('set-rot').value;
-  // 180 度翻转：整体旋转
-  if (rot === 3) {
-    g.translate(W, H);
-    g.rotate(Math.PI);
-  }
-
-  const on = k => !!$(SET_IDS[k]).checked;
-
-  g.fillStyle = PAL.bg; g.fillRect(0, 0, W, H);
-
-  // 状态栏
-  g.fillStyle = PAL.bar; g.fillRect(0, 0, W, 15);
-  g.fillStyle = PAL.acc;
-  g.font = '8px monospace'; g.textBaseline = 'top';
-  g.fillText('DeepSeek', 5, 3);
-  g.fillStyle = PAL.ink2;
-  g.fillText('12:34:56', W - 4 - 48, 3);
-  g.beginPath(); g.arc(W - 4 - 48 - 10, 7, 3, 0, 7); g.fillStyle = '#2F6B3A'; g.fill();
-
-  // 余额卡
-  g.fillStyle = PAL.card;
-  roundRect(g, 2, 16, 156, 41, 5); g.fill();
-  g.fillStyle = PAL.ink;
-  g.font = 'bold 24px monospace';
-  g.textAlign = 'center';
-  g.fillText('96.50', W / 2, 18);
-  g.textAlign = 'left';
-  // 涨跌
-  g.fillStyle = '#9E2B24'; g.font = '8px monospace';
-  g.fillText('0.02', 152 - 30, 42);
-  g.beginPath(); g.moveTo(152 - 39, 44); g.lineTo(152 - 34, 44); g.lineTo(152 - 36, 49); g.fill();
-  // 进度条
-  g.fillStyle = PAL.card2; g.fillRect(10, 50, 140, 3);
-  g.fillStyle = PAL.acc;   g.fillRect(10, 50, 17, 3);
-  g.beginPath(); g.arc(27, 51, 2.5, 0, 7); g.fill();
-
-  // 折线图卡
-  if (on('showChart')) {
-    g.fillStyle = PAL.card2; roundRect(g, 2, 58, 156, 31, 4); g.fill();
-    g.strokeStyle = PAL.div; g.lineWidth = 1;
-    for (let i = 0; i <= 2; i++) {
-      const y = 62 + 11.5 * i;
-      g.beginPath(); g.moveTo(6, y); g.lineTo(154, y); g.stroke();
-    }
-    g.strokeStyle = PAL.acc; g.beginPath();
-    for (let i = 0; i < 30; i++) {
-      const x = 6 + i * (148 / 29);
-      const y = 80 - (Math.sin(i * 0.5) * 0.5 + 0.5) * 16 - 2;
-      i ? g.lineTo(x, y) : g.moveTo(x, y);
-    }
-    g.stroke();
-  }
-
-  // 信息卡
-  const y = 90;
-  g.fillStyle = PAL.card2;
-  if (on('showUsed') && on('showPolls')) {
-    roundRect(g, 2, y, 77, 17, 3); g.fill();
-    roundRect(g, 81, y, 77, 17, 3); g.fill();
-  } else {
-    roundRect(g, 2, y, 156, 17, 3); g.fill();
-  }
-  g.fillStyle = PAL.ink; g.font = '11px sans-serif';
-  if (on('showUsed'))  g.fillText('消耗 12.34', 6, y + 3);
-  if (on('showPolls')) g.fillText('次数 1527', on('showUsed') ? 85 : 6, y + 3);
-
-  // 底栏
-  g.fillStyle = PAL.ink2; g.font = '8px monospace';
-  if (on('showToken')) g.fillText('Token 518211416', 4, 108);
-  if (on('showWifi'))  { g.font = '11px sans-serif'; g.fillText('WiFi 1213', 4, 118); }
-  g.font = '8px monospace';
-  g.fillText('12:34:56', W - 4 - 48, 120);
-}
 
 function roundRect(g, x, y, w, h, r) {
   g.beginPath();
@@ -394,19 +298,9 @@ on('bal-click', 'click', function () {
   toast('已刷新');
 });
 
-// 设置项变化时实时重绘预览
-SET_KEYS.forEach(function (k) {
-  on(SET_IDS[k], 'change', drawPreview);
-});
-on('set-rot', 'change', drawPreview);
-
-// 背光滑块：显示数值 + 重绘 + 预览亮度联动
+// 背光滑块：显示数值
 on('set-bri', 'input', function () {
-  const v = $('set-bri').value;
-  setText('bri-val', v);
-  const cv = $('screen-preview');
-  if (cv) cv.style.filter = 'brightness(' + (0.35 + v / 100 * 0.65) + ')';
-  drawPreview();
+  setText('bri-val', $('set-bri').value);
 });
 
 // ============================================================
@@ -985,7 +879,85 @@ function layInit() {
 
   on('lay-send', 'click', laySend)
   on('lay-reload', 'click', layReload)
-  on('lay-default', 'click', function () { defaultLayout(); LAY.sel = null; layRenderAll(); toast('已恢复默认布局') })
+  on('lay-default', 'click', function () { defaultLayout(); LAY.sel = null; layRenderAll(); toast('已恢复固件默认布局') })
+
+  // 主题切换
+  const thBox = $('lay-themes')
+  if (thBox) {
+    Object.keys(PALS).forEach(function (name) {
+      const b = document.createElement('button')
+      b.textContent = name
+      b.className = (LAY.theme === name) ? 'on' : ''
+      b.addEventListener('click', function () {
+        LAY.theme = name
+        Array.prototype.forEach.call(thBox.children, function (c) { c.className = '' })
+        b.className = 'on'
+        layRenderAll()
+      })
+      thBox.appendChild(b)
+    })
+  }
+
+  // ---------- 备份 / 恢复（存 localStorage） ----------
+  function slots() { try { return JSON.parse(localStorage.getItem('ds_layouts') || '[]') } catch (e) { return [] } }
+  function setSlots(a) { localStorage.setItem('ds_layouts', JSON.stringify(a)) }
+
+  function renderSlots() {
+    const box = $('lay-slots'); if (!box) return
+    box.innerHTML = ''
+    const a = slots()
+    if (!a.length) {
+      const d = document.createElement('div')
+      d.className = 'lay-hint'
+      d.textContent = '（暂无备份）'
+      box.appendChild(d)
+      return
+    }
+    a.forEach(function (s, i) {
+      const row = document.createElement('div')
+      row.className = 'lay-slot'
+      const info = document.createElement('span')
+      info.textContent = s.name + ' · ' + (s.els ? s.els.length : 0) + '元素 · ' + s.time
+      const use = document.createElement('button')
+      use.textContent = '恢复'
+      use.addEventListener('click', function () {
+        LAY.els = JSON.parse(JSON.stringify(s.els))
+        LAY.nextId = LAY.els.reduce(function (m, e) { return Math.max(m, e.id || 0) }, 0) + 1
+        LAY.sel = null
+        layRenderAll()
+        toast('✓ 已恢复「' + s.name + '」')
+      })
+      const del = document.createElement('button')
+      del.textContent = '删除'
+      del.addEventListener('click', function () {
+        const b = slots(); b.splice(i, 1); setSlots(b); renderSlots()
+      })
+      row.appendChild(info); row.appendChild(use); row.appendChild(del)
+      box.appendChild(row)
+    })
+  }
+
+  on('lay-save', 'click', function () {
+    const a = slots()
+    // 自动命名（手机上没有好用的输入框，用序号代替）
+    a.unshift({
+      name: '备份' + (a.length + 1),
+      time: new Date().toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }),
+      theme: LAY.theme,
+      els: JSON.parse(JSON.stringify(LAY.els))
+    })
+    if (a.length > 8) a.length = 8      // 最多存 8 份
+    setSlots(a); renderSlots()
+    toast('✓ 已保存到手机（共 ' + a.length + ' 份）')
+  })
+
+  on('lay-load', 'click', function () {
+    const a = slots()
+    if (!a.length) { toast('还没有备份，先点「保存当前布局到手机」'); return }
+    toast('从下方列表点「恢复」', 2600)
+  })
+
+  renderSlots()
 
   layRenderAll()
 }
@@ -994,7 +966,6 @@ try { layInit() } catch (e) { console.error('[DS] 布局页初始化失败:', e)
 
 // ---------- 初始化（各自独立 try，互不影响） ----------
 try { loadSettings() } catch (e) { console.error('[DS] loadSettings 失败:', e) }
-try { drawPreview() } catch (e) { console.error('[DS] drawPreview 失败:', e) }
 
 // 启动提示
 setTimeout(function () {

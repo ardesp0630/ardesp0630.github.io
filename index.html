@@ -61,18 +61,7 @@
     </div>
 
     <div class="card">
-      <div class="card-title">界面设置</div>
-
-      <div class="preview-wrap">
-        <div class="preview-label">屏幕预览（160×128，随设置变化）</div>
-        <canvas id="screen-preview" width="320" height="256"></canvas>
-      </div>
-
-      <div class="toggle-row"><span>折线图</span><label class="sw"><input type="checkbox" id="set-chart" checked><i></i></label></div>
-      <div class="toggle-row"><span>消耗</span><label class="sw"><input type="checkbox" id="set-used" checked><i></i></label></div>
-      <div class="toggle-row"><span>次数</span><label class="sw"><input type="checkbox" id="set-polls" checked><i></i></label></div>
-      <div class="toggle-row"><span>Token</span><label class="sw"><input type="checkbox" id="set-tok" checked><i></i></label></div>
-      <div class="toggle-row"><span>WiFi</span><label class="sw"><input type="checkbox" id="set-wifi" checked><i></i></label></div>
+      <div class="card-title">设备设置</div>
 
       <label for="set-bri">背光亮度 <b id="bri-val">100</b>%</label>
       <input type="range" id="set-bri" min="10" max="100" value="100">
@@ -91,9 +80,14 @@
         <option value="3" selected>横屏翻转（180°，默认）</option>
       </select>
 
-      <button id="btn-send-set" class="btn">应用设置（蓝牙）</button>
-      <button id="btn-reset-set" class="btn btn2">恢复默认</button>
-      <p class="hint">设置即时生效，设备不会重启。</p>
+      <button id="btn-send-set" class="btn">应用到设备（蓝牙）</button>
+      <p class="hint">界面显示内容请到「布局」页调整。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">危险操作</div>
+      <button id="btn-reset-set" class="btn btn2">恢复默认设置</button>
+      <p class="hint">只重置背光/刷新率/方向，不影响 WiFi 和界面布局。</p>
     </div>
   </section>
 
@@ -153,11 +147,24 @@
     </div>
 
     <div class="card">
+      <div class="card-title">主题配色</div>
+      <div class="lay-tools" id="lay-themes"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">应用到设备</div>
       <button class="btn" id="lay-send">发送到设备（蓝牙）</button>
       <button class="btn btn2" id="lay-reload">从设备读取当前布局</button>
-      <button class="btn btn2" id="lay-default">恢复默认布局</button>
       <p class="hint">发送后设备立即重排，不用烧固件。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">备份与恢复（存手机）</div>
+      <button class="btn btn2" id="lay-save">保存当前布局到手机</button>
+      <button class="btn btn2" id="lay-load">从手机恢复布局</button>
+      <div class="lay-slots" id="lay-slots"></div>
+      <button class="btn btn2" id="lay-default">恢复固件默认布局</button>
+      <p class="hint">备份存在浏览器本地，换布局前先存一份。</p>
     </div>
   </section>
 

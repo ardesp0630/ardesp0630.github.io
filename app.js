@@ -743,6 +743,44 @@ function layUpdateProps() {
 
 function layRenderAll() { drawLayout(); layRenderList(); layUpdateProps() }
 
+// ---------- 分片写入（绕过 BLE MTU 限制） ----------
+// 把长字符串拆成小块，每块带 <seq>|<total>| 头部，固件端拼接
+const CHUNK = 180          // 每片字符数（BLE 默认 MTU 20 字节，协商后约 180 安全）
+
+async function writeLong(ch, text) {
+  const total = Math.max(1, Math.ceil(text.length / CHUNK))
+  for (let i = 0; i < total; i++) {
+    const body = text.substring(i * CHUNK, (i + 1) * CHUNK)
+    const piece = i + '|' + total + '|' + body
+    await writeChar(ch, piece)
+    await sleep(60)        // 片间隔，避免丢包
+  }
+}
+
+// ---------- 读取分片（固件分片回传） ----------
+async function readLong(ch, maxWaitMs) {
+  let buf = '', total = 1, got = 0
+  const deadline = Date.now() + (maxWaitMs || 4000)
+  while (Date.now() < deadline && got < total) {
+    const txt = new TextDecoder().decode(await ch.readValue())
+    const p1 = txt.indexOf('|')
+    const p2 = p1 > 0 ? txt.indexOf('|', p1 + 1) : -1
+    if (p2 > p1 && p1 <= 3) {
+      const seq = parseInt(txt.substring(0, p1), 10)
+      total = parseInt(txt.substring(p1 + 1, p2), 10) || 1
+      if (seq === 0) { buf = ''; got = 0 }
+      buf += txt.substring(p2 + 1)
+      got++
+    } else {
+      // 不是分片格式，直接当整体
+      return txt
+    }
+    if (got >= total) break
+    await sleep(120)
+  }
+  return buf
+}
+
 // ---------- 发送到设备 ----------
 function layExport() {
   const els = LAY.els.map(function (e) {
@@ -755,34 +793,54 @@ function layExport() {
     if (e.text) o.text = e.text
     return o
   })
-  return JSON.stringify({ layout: els })
+  return JSON.stringify({ elems: els })
 }
 
 async function laySend() {
   if (!requireConn()) return
   const payload = layExport()
+  const btn = $('lay-send')
+  if (btn) btn.disabled = true
   try {
     const ch = await bleService.getCharacteristic(BLE_CHAR_SETTINGS)
-    // 固件接受 {"layout":[...]} 或 {"elems":[...]}
-    const send = payload.replace('"layout"', '"elems"')
-    await writeChar(ch, send)
-    await sleep(500)
-    toast('已发送 ' + LAY.els.length + ' 个元素，设备正在重排')
+    const total = Math.ceil(payload.length / CHUNK)
+    toast('发送中… ' + payload.length + ' 字节 / ' + total + ' 片', 1600)
+    await writeLong(ch, payload)
+    await sleep(900)
+    // 读回确认
+    try {
+      const st = await bleService.getCharacteristic(BLE_CHAR_STATUS)
+      const ack = new TextDecoder().decode(await st.readValue())
+      if (ack.indexOf('"ok"') >= 0 && ack.indexOf('count') >= 0) {
+        toast('✓ 设备已应用 ' + LAY.els.length + ' 个元素')
+      } else {
+        toast('已发送（设备回执：' + ack.slice(0, 40) + '）', 3500)
+      }
+    } catch (e2) {
+      toast('已发送 ' + LAY.els.length + ' 个元素')
+    }
   } catch (e) {
-    toast(handleGattError(e), 3500)
+    toast(handleGattError(e), 4000)
+  } finally {
+    if (btn) btn.disabled = false
   }
 }
 
 async function layReload() {
   if (!requireConn()) return
+  const btn = $('lay-reload')
+  if (btn) btn.disabled = true
   try {
-    const ch = await bleService.getCharacteristic(BLE_CHAR_CMD)
-    await writeChar(ch, 'LAYOUT')
-    await sleep(600)
+    // 先触发固件准备数据，稍等再读
+    const cmd = await bleService.getCharacteristic(BLE_CHAR_CMD)
+    await writeChar(cmd, 'LAYOUT')
+    await sleep(1200)
+
     const st = await bleService.getCharacteristic(BLE_CHAR_STATUS)
-    const txt = new TextDecoder().decode(await st.readValue())
+    const txt = await readLong(st, 6000)
     let d = {}
     try { d = JSON.parse(txt) } catch (e) {}
+
     if (d.elems && d.elems.length) {
       LAY.els = d.elems.map(function (e, i) {
         return { id:i+1, t:e.t, x:e.x, y:e.y, w:e.w, h:e.h,
@@ -792,12 +850,14 @@ async function layReload() {
       LAY.nextId = LAY.els.length + 1
       LAY.sel = null
       layRenderAll()
-      toast('已读取 ' + LAY.els.length + ' 个元素')
+      toast('✓ 已读取 ' + LAY.els.length + ' 个元素')
     } else {
-      toast('设备未返回布局（旧固件？）', 3000)
+      toast('设备未返回布局（可能固件版本较旧）', 3500)
     }
   } catch (e) {
-    toast('读取失败：' + (e.message || e), 3500)
+    toast('读取失败：' + (e.message || e), 4000)
+  } finally {
+    if (btn) btn.disabled = false
   }
 }
 

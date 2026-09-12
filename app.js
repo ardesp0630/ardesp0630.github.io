@@ -831,28 +831,50 @@ async function layReload() {
   const btn = $('lay-reload')
   if (btn) btn.disabled = true
   try {
-    // 先触发固件准备数据，稍等再读
     const cmd = await bleService.getCharacteristic(BLE_CHAR_CMD)
-    await writeChar(cmd, 'LAYOUT')
-    await sleep(1200)
+    const st  = await bleService.getCharacteristic(BLE_CHAR_STATUS)
 
-    const st = await bleService.getCharacteristic(BLE_CHAR_STATUS)
-    const txt = await readLong(st, 6000)
+    // 第 1 步：问固件共几片，同时拿到第 0 片
+    await writeChar(cmd, 'LAYOUT')
+    await sleep(400)
+    let txt = new TextDecoder().decode(await st.readValue())
+
+    let p1 = txt.indexOf('|'), p2 = p1 > 0 ? txt.indexOf('|', p1 + 1) : -1
+    if (p2 <= p1) {
+      toast('设备未返回布局（固件可能较旧）', 3500)
+      return
+    }
+    let total = parseInt(txt.substring(p1 + 1, p2), 10) || 1
+    let buf = txt.substring(p2 + 1)
+
+    // 第 2 步：逐片读取剩余部分
+    for (let i = 1; i < total; i++) {
+      await writeChar(cmd, 'LAYOUT:' + i)
+      await sleep(280)
+      let c = new TextDecoder().decode(await st.readValue())
+      const q1 = c.indexOf('|'), q2 = q1 > 0 ? c.indexOf('|', q1 + 1) : -1
+      if (q2 > q1) buf += c.substring(q2 + 1)
+    }
+
     let d = {}
-    try { d = JSON.parse(txt) } catch (e) {}
+    try { d = JSON.parse(buf) } catch (e) {
+      toast('布局解析失败（' + buf.length + ' 字节）', 3500)
+      return
+    }
 
     if (d.elems && d.elems.length) {
       LAY.els = d.elems.map(function (e, i) {
         return { id:i+1, t:e.t, x:e.x, y:e.y, w:e.w, h:e.h,
-                 c:e.c, sz:e.sz||1, r:e.r||0, bind:e.bind||0, icon:e.icon||0,
+                 c:(typeof e.c === 'string' ? e.c : 'ink'),
+                 sz:e.sz||1, r:e.r||0, bind:e.bind||0, icon:e.icon||0,
                  on:e.on !== 0, text:e.text||'' }
       })
       LAY.nextId = LAY.els.length + 1
       LAY.sel = null
       layRenderAll()
-      toast('✓ 已读取 ' + LAY.els.length + ' 个元素')
+      toast('✓ 已读取 ' + LAY.els.length + ' 个元素（' + buf.length + ' 字节）')
     } else {
-      toast('设备未返回布局（可能固件版本较旧）', 3500)
+      toast('设备返回内容无 elems 字段', 3500)
     }
   } catch (e) {
     toast('读取失败：' + (e.message || e), 4000)
